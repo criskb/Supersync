@@ -37,9 +37,12 @@ class FaceRigRetargetConfig:
     lip_wide_scale: float = 0.05
     blink_scale: float = 0.02
 
-    # Smoothing/intensity controls for robust animation.
+    # Intensity controls.
     default_intensity: float = 1.0
     max_intensity: float = 2.0
+
+    # Global temporal smoothing for control signals (0 = no smoothing, 1 = frozen).
+    control_smoothing_alpha: float = 0.25
 
 
 class FaceRigRetarget:
@@ -69,15 +72,7 @@ class FaceRigRetarget:
         reference_landmarks: dict[str, tuple[float, float]] | None = None,
         image_size: tuple[int, int] | None = None,
     ) -> dict[str, Any]:
-        """Build a stable neutral rig in normalized coordinates.
-
-        Args:
-            reference_landmarks: Optional sparse/dense identity landmarks.
-            image_size: Optional `(width, height)` used when references are pixel-space.
-
-        Returns:
-            A normalized neutral rig payload with completeness metadata.
-        """
+        """Build a stable neutral rig in normalized coordinates."""
         normalized_reference = self._normalize_reference_landmarks(reference_landmarks, image_size)
         base = dict(self.config.canonical_landmarks)
         base.update(normalized_reference)
@@ -88,12 +83,15 @@ class FaceRigRetarget:
         expressive_count = sum(1 for key in self._REQUIRED_EXPRESSIVE_POINTS if key in normalized_reference)
         expressive_completeness = expressive_count / len(self._REQUIRED_EXPRESSIVE_POINTS)
 
+        missing_required = [k for k in self._REQUIRED_EXPRESSIVE_POINTS if k not in normalized_reference]
+
         return {
             "identity_mode": mode,
             "landmarks": points,
             "landmark_order": list(self.config.landmark_order),
             "expressive_completeness": expressive_completeness,
             "source_space": "pixel" if image_size is not None else "normalized",
+            "missing_reference_points": missing_required if mode == "reference" else [],
         }
 
     def apply_deltas(
@@ -101,39 +99,46 @@ class FaceRigRetarget:
         neutral_rig: dict[str, Any],
         motion_frames: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Apply motion deltas frame-by-frame to a neutral rig.
-
-        Supports sparse rigs by falling back to canonical points when key landmarks
-        are missing from the incoming neutral rig.
-        """
+        """Apply motion deltas frame-by-frame to a neutral rig."""
         base_landmarks = dict(self.config.canonical_landmarks)
         base_landmarks.update(neutral_rig.get("landmarks", {}))
 
         order = [name for name in neutral_rig.get("landmark_order", self.config.landmark_order) if name in base_landmarks]
         identity_mode = str(neutral_rig.get("identity_mode", "canonical"))
 
-        if not motion_frames:
+        if not motion_frames or not order:
             return []
 
         out: list[dict[str, Any]] = []
+        prev_controls = {"jaw_open": 0.0, "lip_open": 0.0, "lip_wide": 0.0, "blink": 0.0}
+
         for i, frame in enumerate(motion_frames):
             intensity = self._clamp(float(frame.get("intensity", self.config.default_intensity)), 0.0, self.config.max_intensity)
 
-            jaw_open = self._clamp(float(frame.get("jaw_open", 0.0)), 0.0, 1.0)
-            lip_open = self._clamp(float(frame.get("lip_open", 0.0)), 0.0, 1.0)
-            lip_wide = self._clamp(float(frame.get("lip_wide", 0.0)), -1.0, 1.0)
-            blink = 0.5 * self._clamp(float(frame.get("blink_l", 0.0)), 0.0, 1.0) + 0.5 * self._clamp(float(frame.get("blink_r", 0.0)), 0.0, 1.0)
+            alpha = self._clamp(float(frame.get("smoothing", self.config.control_smoothing_alpha)), 0.0, 0.95)
+            raw_controls = {
+                "jaw_open": self._clamp(float(frame.get("jaw_open", 0.0)), 0.0, 1.0),
+                "lip_open": self._clamp(float(frame.get("lip_open", 0.0)), 0.0, 1.0),
+                "lip_wide": self._clamp(float(frame.get("lip_wide", 0.0)), -1.0, 1.0),
+                "blink": 0.5 * self._clamp(float(frame.get("blink_l", 0.0)), 0.0, 1.0)
+                + 0.5 * self._clamp(float(frame.get("blink_r", 0.0)), 0.0, 1.0),
+            }
+
+            controls = {
+                key: self._low_pass(prev_controls[key], value, alpha)
+                for key, value in raw_controls.items()
+            }
+            prev_controls = controls
 
             posed = {name: [*base_landmarks[name]] for name in order}
 
-            self._adjust_point_y(posed, "jaw", jaw_open * self.config.jaw_open_scale * intensity)
-            self._adjust_point_y(posed, "upper_lip", -lip_open * self.config.lip_open_scale * 0.5 * intensity)
-            self._adjust_point_y(posed, "lower_lip", lip_open * self.config.lip_open_scale * intensity)
-            self._adjust_point_x(posed, "mouth_left", -lip_wide * self.config.lip_wide_scale * intensity)
-            self._adjust_point_x(posed, "mouth_right", lip_wide * self.config.lip_wide_scale * intensity)
-
-            self._adjust_point_y(posed, "left_eye", blink * self.config.blink_scale * intensity)
-            self._adjust_point_y(posed, "right_eye", blink * self.config.blink_scale * intensity)
+            self._adjust_point_y(posed, "jaw", controls["jaw_open"] * self.config.jaw_open_scale * intensity)
+            self._adjust_point_y(posed, "upper_lip", -controls["lip_open"] * self.config.lip_open_scale * 0.5 * intensity)
+            self._adjust_point_y(posed, "lower_lip", controls["lip_open"] * self.config.lip_open_scale * intensity)
+            self._adjust_point_x(posed, "mouth_left", -controls["lip_wide"] * self.config.lip_wide_scale * intensity)
+            self._adjust_point_x(posed, "mouth_right", controls["lip_wide"] * self.config.lip_wide_scale * intensity)
+            self._adjust_point_y(posed, "left_eye", controls["blink"] * self.config.blink_scale * intensity)
+            self._adjust_point_y(posed, "right_eye", controls["blink"] * self.config.blink_scale * intensity)
 
             clamped_landmarks = {
                 name: (self._clamp(point[0], 0.0, 1.0), self._clamp(point[1], 0.0, 1.0))
@@ -148,11 +153,9 @@ class FaceRigRetarget:
                     "landmarks": clamped_landmarks,
                     "landmarks_2d": [[clamped_landmarks[name][0], clamped_landmarks[name][1]] for name in order],
                     "motion": {
-                        "jaw_open": jaw_open,
-                        "lip_open": lip_open,
-                        "lip_wide": lip_wide,
-                        "blink": blink,
+                        **controls,
                         "intensity": intensity,
+                        "smoothing": alpha,
                     },
                 }
             )
@@ -172,6 +175,10 @@ class FaceRigRetarget:
     @staticmethod
     def _clamp(value: float, low: float, high: float) -> float:
         return max(low, min(high, value))
+
+    @staticmethod
+    def _low_pass(previous: float, target: float, alpha: float) -> float:
+        return previous + (1.0 - alpha) * (target - previous)
 
     @staticmethod
     def _normalize_reference_landmarks(

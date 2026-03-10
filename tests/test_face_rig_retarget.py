@@ -23,6 +23,7 @@ class FaceRigRetargetTests(unittest.TestCase):
         eye_spacing = rig["landmarks"]["right_eye"][0] - rig["landmarks"]["left_eye"][0]
         self.assertAlmostEqual(eye_spacing, 0.4, places=6)
         self.assertGreaterEqual(rig["expressive_completeness"], 0.99)
+        self.assertEqual(rig["missing_reference_points"], [])
 
     def test_canonical_mode_is_available_without_reference(self):
         node = FaceRigRetarget()
@@ -43,6 +44,7 @@ class FaceRigRetargetTests(unittest.TestCase):
         self.assertAlmostEqual(rig["landmarks"]["left_eye"][0], 0.2, places=6)
         self.assertGreater(rig["expressive_completeness"], 0.0)
         self.assertLess(rig["expressive_completeness"], 1.0)
+        self.assertIn("jaw", rig["missing_reference_points"])
 
     def test_pixel_space_reference_is_normalized(self):
         node = FaceRigRetarget()
@@ -68,6 +70,18 @@ class FaceRigRetargetTests(unittest.TestCase):
             self.assertLessEqual(x, 1.0)
             self.assertGreaterEqual(y, 0.0)
             self.assertLessEqual(y, 1.0)
+
+    def test_apply_deltas_smoothing_reduces_control_jumps(self):
+        node = FaceRigRetarget()
+        rig = node.build_neutral_rig()
+        frames = [
+            {"frame_index": 0, "jaw_open": 0.0, "smoothing": 0.0},
+            {"frame_index": 1, "jaw_open": 1.0, "smoothing": 0.8},
+        ]
+
+        out = node.apply_deltas(rig, frames)
+
+        self.assertLess(out[1]["motion"]["jaw_open"], 0.5)
 
     def test_apply_deltas_handles_custom_landmark_order_without_key_errors(self):
         node = FaceRigRetarget()
