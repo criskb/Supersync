@@ -1,0 +1,12 @@
+{
+  "fps": 60,
+  "max_abs_lip_audio_sync_lag_frames": 4,
+  "min_lip_audio_sync_correlation": 0.45,
+  "blink_rate_per_minute_range": [
+    6.0,
+    45.0
+  ],
+  "max_landmark_velocity_outliers": 18,
+  "max_landmark_acceleration_outliers": 24,
+  "max_pose_jitter_score": 0.055
+}
