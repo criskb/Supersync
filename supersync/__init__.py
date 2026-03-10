@@ -3,6 +3,8 @@ from .nodes import (
     CombinePoseDataConfig,
     EyeMotionSynth,
     EyeMotionSynthConfig,
+    FaceRigRetarget,
+    FaceRigRetargetConfig,
     LipRefineFace,
     LipRefineFaceConfig,
 )
@@ -12,6 +14,8 @@ __all__ = [
     "CombinePoseDataConfig",
     "EyeMotionSynth",
     "EyeMotionSynthConfig",
+    "FaceRigRetarget",
+    "FaceRigRetargetConfig",
     "LipRefineFace",
     "LipRefineFaceConfig",
 ]
