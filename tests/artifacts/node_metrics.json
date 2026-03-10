@@ -1,0 +1,73 @@
+{
+  "fps": 60,
+  "thresholds": {
+    "max_abs_lip_audio_sync_lag_frames": 4,
+    "min_lip_audio_sync_correlation": 0.45,
+    "blink_rate_per_minute_range": [
+      6.0,
+      45.0
+    ],
+    "max_landmark_velocity_outliers": 18,
+    "max_landmark_acceleration_outliers": 24,
+    "max_pose_jitter_score": 0.055
+  },
+  "clips": [
+    {
+      "clip_id": "clip_alpha",
+      "lip_audio_sync_lag_frames": 2,
+      "lip_audio_sync_lag_seconds": 0.03333333333333333,
+      "lip_audio_sync_correlation": 0.9928720094885919,
+      "blink_rate_per_minute": 8.571428571428571,
+      "blink_duration_histogram_seconds": {
+        "0.00-0.08": 0,
+        "0.08-0.12": 1,
+        "0.12-0.16": 0,
+        "0.16-0.20": 0,
+        "0.20-0.30": 0,
+        "0.30-10.00": 0
+      },
+      "blink_count": 1,
+      "landmark_velocity_outliers": 1,
+      "landmark_acceleration_outliers": 0,
+      "pose_jitter_score": 0.002645570069119951
+    },
+    {
+      "clip_id": "clip_beta",
+      "lip_audio_sync_lag_frames": 2,
+      "lip_audio_sync_lag_seconds": 0.03333333333333333,
+      "lip_audio_sync_correlation": 0.9930595521789246,
+      "blink_rate_per_minute": 8.571428571428571,
+      "blink_duration_histogram_seconds": {
+        "0.00-0.08": 0,
+        "0.08-0.12": 1,
+        "0.12-0.16": 0,
+        "0.16-0.20": 0,
+        "0.20-0.30": 0,
+        "0.30-10.00": 0
+      },
+      "blink_count": 1,
+      "landmark_velocity_outliers": 1,
+      "landmark_acceleration_outliers": 0,
+      "pose_jitter_score": 0.002658967744392826
+    },
+    {
+      "clip_id": "clip_gamma",
+      "lip_audio_sync_lag_frames": 2,
+      "lip_audio_sync_lag_seconds": 0.03333333333333333,
+      "lip_audio_sync_correlation": 0.9929482639276526,
+      "blink_rate_per_minute": 8.571428571428571,
+      "blink_duration_histogram_seconds": {
+        "0.00-0.08": 0,
+        "0.08-0.12": 1,
+        "0.12-0.16": 0,
+        "0.16-0.20": 0,
+        "0.20-0.30": 0,
+        "0.30-10.00": 0
+      },
+      "blink_count": 1,
+      "landmark_velocity_outliers": 0,
+      "landmark_acceleration_outliers": 0,
+      "pose_jitter_score": 0.002677148098632511
+    }
+  ]
+}

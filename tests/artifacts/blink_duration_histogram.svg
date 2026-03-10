@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320">
+<text x="320.0" y="22" text-anchor="middle" font-size="16">Blink Duration Histogram (seconds)</text>
+<line x1="40" y1="40" x2="40" y2="280" stroke="#222"/>
+<line x1="40" y1="280" x2="600" y2="280" stroke="#222"/>
+<rect x="56.3" y="280.0" width="60.7" height="0.0" fill="#4b7bec"/>
+<text x="86.7" y="308" text-anchor="middle" font-size="10">0.00-0.08</text>
+<text x="86.7" y="276.0" text-anchor="middle" font-size="10">0.000</text>
+<rect x="149.7" y="40.0" width="60.7" height="240.0" fill="#4b7bec"/>
+<text x="180.0" y="308" text-anchor="middle" font-size="10">0.08-0.12</text>
+<text x="180.0" y="36.0" text-anchor="middle" font-size="10">3.000</text>
+<rect x="243.0" y="280.0" width="60.7" height="0.0" fill="#4b7bec"/>
+<text x="273.3" y="308" text-anchor="middle" font-size="10">0.12-0.16</text>
+<text x="273.3" y="276.0" text-anchor="middle" font-size="10">0.000</text>
+<rect x="336.3" y="280.0" width="60.7" height="0.0" fill="#4b7bec"/>
+<text x="366.7" y="308" text-anchor="middle" font-size="10">0.16-0.20</text>
+<text x="366.7" y="276.0" text-anchor="middle" font-size="10">0.000</text>
+<rect x="429.7" y="280.0" width="60.7" height="0.0" fill="#4b7bec"/>
+<text x="460.0" y="308" text-anchor="middle" font-size="10">0.20-0.30</text>
+<text x="460.0" y="276.0" text-anchor="middle" font-size="10">0.000</text>
+<rect x="523.0" y="280.0" width="60.7" height="0.0" fill="#4b7bec"/>
+<text x="553.3" y="308" text-anchor="middle" font-size="10">0.30-10.00</text>
+<text x="553.3" y="276.0" text-anchor="middle" font-size="10">0.000</text>
+</svg>
