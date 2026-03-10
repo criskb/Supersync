@@ -13,6 +13,19 @@ class ComfyUiFaceRigNodeTests(unittest.TestCase):
         self.assertEqual(payload["identity_mode"], "reference")
         self.assertAlmostEqual(payload["landmarks"]["left_eye"][0], 0.3, places=6)
 
+    def test_build_neutral_node_ignores_invalid_landmark_values(self):
+        node = FaceRigBuildNeutralNode()
+        result = node.build('{"left_eye": ["bad", 216], "right_eye": [448, 216]}', 640, 1080)
+        payload = json.loads(result[0])
+
+        self.assertIn("left_eye", payload["landmarks"])
+        # left_eye falls back to canonical due invalid input conversion.
+        self.assertAlmostEqual(payload["landmarks"]["left_eye"][0], 0.38, places=6)
+
+    def test_build_neutral_validation_checks_json_shape(self):
+        err = FaceRigBuildNeutralNode.VALIDATE_INPUTS("[]", 640, 1080)
+        self.assertIsInstance(err, str)
+
     def test_apply_deltas_node_outputs_frame_payload(self):
         build = FaceRigBuildNeutralNode()
         neutral = build.build("{}", 0, 0)[0]
@@ -28,6 +41,16 @@ class ComfyUiFaceRigNodeTests(unittest.TestCase):
         self.assertEqual(len(frames), 2)
         self.assertIn("landmarks_2d", frames[0])
         self.assertLess(frames[1]["motion"]["jaw_open"], 0.5)
+
+    def test_apply_deltas_validation_checks_json_shape(self):
+        err = FaceRigApplyDeltasNode.VALIDATE_INPUTS("{}", "{}")
+        self.assertIsInstance(err, str)
+
+    def test_apply_deltas_tolerates_malformed_json_with_empty_fallback(self):
+        node = FaceRigApplyDeltasNode()
+        result = node.retarget("{oops", "[bad")
+        frames = json.loads(result[0])
+        self.assertEqual(frames, [])
 
 
 if __name__ == "__main__":
