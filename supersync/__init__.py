@@ -1,3 +1,17 @@
-from .nodes import EyeMotionSynth, EyeMotionSynthConfig
+from .nodes import (
+    CombinePoseData,
+    CombinePoseDataConfig,
+    EyeMotionSynth,
+    EyeMotionSynthConfig,
+    LipRefineFace,
+    LipRefineFaceConfig,
+)
 
-__all__ = ["EyeMotionSynth", "EyeMotionSynthConfig"]
+__all__ = [
+    "CombinePoseData",
+    "CombinePoseDataConfig",
+    "EyeMotionSynth",
+    "EyeMotionSynthConfig",
+    "LipRefineFace",
+    "LipRefineFaceConfig",
+]
