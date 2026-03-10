@@ -25,6 +25,16 @@ class EyeMotionSynthConfig:
     gaze_clamp: tuple[float, float] = (-1.0, 1.0)
     include_squint: bool = False
 
+    expression_smoothing_alpha: float = 0.28
+    expression_confidence_smoothing_alpha: float = 0.2
+    eyelid_open_default: float = 0.92
+    brow_inner_up_range: tuple[float, float] = (0.0, 1.0)
+    brow_outer_up_range: tuple[float, float] = (0.0, 1.0)
+    eyelid_open_range: tuple[float, float] = (0.0, 1.0)
+    cheek_raise_range: tuple[float, float] = (0.0, 1.0)
+    nasolabial_tension_range: tuple[float, float] = (0.0, 1.0)
+    expr_confidence_range: tuple[float, float] = (0.0, 1.0)
+
 
 class EyeMotionSynth:
     """
@@ -34,7 +44,30 @@ class EyeMotionSynth:
       - frame_index
       - blink_l, blink_r
       - gaze_yaw, gaze_pitch
+      - brow_inner_up, brow_outer_up_l, brow_outer_up_r
+      - eyelid_open_l, eyelid_open_r
+      - cheek_raise_l, cheek_raise_r
+      - nasolabial_tension
+      - expr_confidence
       - squint (optional)
+
+    Expression signals are derived from prosody and phrase structure from each
+    Audio2Face frame using normalized input features:
+      - energy: [0, 1], default 0.0
+      - pitch_slope: [-1, 1], default 0.0
+      - phrase_boundary: [0, 1], default inferred from pause/prosody valley
+      - smile: [0, 1], default 0.0
+
+    Interaction rules:
+      - higher smile increases cheek raise and nasolabial tension
+      - higher smile slightly reduces eyelid openness (lower-lid engagement)
+      - boundary + energetic delivery elevates brow action
+      - expression confidence rises with stronger prosody evidence and phrase boundaries
+
+    Ranges/defaults:
+      - all expression channels are clamped to configurable ranges (default [0, 1])
+      - eyelid_open defaults to 0.92 before blink/smile/pitch modulation
+      - expr_confidence defaults to a smoothed baseline from sparse prosody evidence
 
     Frames are emitted one-to-one against the provided Audio2FaceSync frames so
     frame indices align naturally for CombinePoseData merging.
@@ -61,6 +94,16 @@ class EyeMotionSynth:
         blink_phase = "idle"
         phase_frame = 0
 
+        brow_inner_up = 0.0
+        brow_outer_up_l = 0.0
+        brow_outer_up_r = 0.0
+        eyelid_open_l = cfg.eyelid_open_default
+        eyelid_open_r = cfg.eyelid_open_default
+        cheek_raise_l = 0.0
+        cheek_raise_r = 0.0
+        nasolabial_tension = 0.0
+        expr_confidence = 0.0
+
         output: list[dict[str, float | int]] = []
 
         for i, src in enumerate(audio2face_frames):
@@ -68,6 +111,14 @@ class EyeMotionSynth:
             articulation = float(src.get("articulation", 0.0))
             pause = float(src.get("pause", 0.0))
             prosody_valley = float(src.get("prosody_valley", 0.0))
+            energy = float(src.get("energy", 0.0))
+            pitch_slope = float(src.get("pitch_slope", 0.0))
+            smile = float(src.get("smile", 0.0))
+
+            inferred_boundary = (
+                1.0 if (pause >= cfg.pause_boundary_threshold or prosody_valley <= cfg.prosody_valley_threshold) else 0.0
+            )
+            phrase_boundary = float(src.get("phrase_boundary", inferred_boundary))
 
             # Baseline blink trigger from randomized inter-blink timing.
             if blink_phase == "idle":
@@ -121,12 +172,77 @@ class EyeMotionSynth:
             gaze_yaw = max(cfg.gaze_clamp[0], min(cfg.gaze_clamp[1], gaze_yaw))
             gaze_pitch = max(cfg.gaze_clamp[0], min(cfg.gaze_clamp[1], gaze_pitch))
 
+            energy = self._clamp(energy, (0.0, 1.0))
+            pitch_slope = self._clamp(pitch_slope, (-1.0, 1.0))
+            phrase_boundary = self._clamp(phrase_boundary, (0.0, 1.0))
+            smile = self._clamp(smile, (0.0, 1.0))
+
+            rising_pitch = max(0.0, pitch_slope)
+            falling_pitch = max(0.0, -pitch_slope)
+
+            brow_inner_target = 0.18 + 0.38 * energy + 0.26 * phrase_boundary + 0.18 * rising_pitch
+            brow_outer_l_target = 0.12 + 0.28 * energy + 0.2 * phrase_boundary + 0.2 * rising_pitch
+            brow_outer_r_target = 0.12 + 0.26 * energy + 0.22 * phrase_boundary + 0.2 * rising_pitch
+
+            blink_open = 1.0 - blink_value
+            eyelid_target = (
+                cfg.eyelid_open_default
+                + 0.08 * energy
+                - 0.14 * smile
+                - 0.12 * phrase_boundary
+                - 0.05 * falling_pitch
+            )
+            eyelid_l_target = eyelid_target * blink_open
+            eyelid_r_target = (eyelid_target - 0.01 * phrase_boundary) * blink_open
+
+            cheek_l_target = 0.08 + 0.36 * smile + 0.24 * energy + 0.06 * phrase_boundary
+            cheek_r_target = 0.08 + 0.34 * smile + 0.24 * energy + 0.08 * phrase_boundary
+
+            nasolabial_target = 0.06 + 0.42 * smile + 0.22 * energy + 0.14 * phrase_boundary
+            confidence_target = 0.15 + 0.45 * energy + 0.2 * abs(pitch_slope) + 0.2 * phrase_boundary
+
+            alpha = cfg.expression_smoothing_alpha
+            brow_inner_up = self._smooth(brow_inner_up, self._clamp(brow_inner_target, cfg.brow_inner_up_range), alpha)
+            brow_outer_up_l = self._smooth(
+                brow_outer_up_l,
+                self._clamp(brow_outer_l_target, cfg.brow_outer_up_range),
+                alpha,
+            )
+            brow_outer_up_r = self._smooth(
+                brow_outer_up_r,
+                self._clamp(brow_outer_r_target, cfg.brow_outer_up_range),
+                alpha,
+            )
+            eyelid_open_l = self._smooth(eyelid_open_l, self._clamp(eyelid_l_target, cfg.eyelid_open_range), alpha)
+            eyelid_open_r = self._smooth(eyelid_open_r, self._clamp(eyelid_r_target, cfg.eyelid_open_range), alpha)
+            cheek_raise_l = self._smooth(cheek_raise_l, self._clamp(cheek_l_target, cfg.cheek_raise_range), alpha)
+            cheek_raise_r = self._smooth(cheek_raise_r, self._clamp(cheek_r_target, cfg.cheek_raise_range), alpha)
+            nasolabial_tension = self._smooth(
+                nasolabial_tension,
+                self._clamp(nasolabial_target, cfg.nasolabial_tension_range),
+                alpha,
+            )
+            expr_confidence = self._smooth(
+                expr_confidence,
+                self._clamp(confidence_target, cfg.expr_confidence_range),
+                cfg.expression_confidence_smoothing_alpha,
+            )
+
             out: dict[str, float | int] = {
                 "frame_index": frame_index,
                 "blink_l": blink_value,
                 "blink_r": blink_value,
                 "gaze_yaw": gaze_yaw,
                 "gaze_pitch": gaze_pitch,
+                "brow_inner_up": brow_inner_up,
+                "brow_outer_up_l": brow_outer_up_l,
+                "brow_outer_up_r": brow_outer_up_r,
+                "eyelid_open_l": eyelid_open_l,
+                "eyelid_open_r": eyelid_open_r,
+                "cheek_raise_l": cheek_raise_l,
+                "cheek_raise_r": cheek_raise_r,
+                "nasolabial_tension": nasolabial_tension,
+                "expr_confidence": expr_confidence,
             }
             if cfg.include_squint:
                 squint = min(1.0, max(0.0, 0.08 + 0.2 * blink_value + 0.12 * max(0.0, articulation - 0.5)))
@@ -159,3 +275,11 @@ class EyeMotionSynth:
             prob *= cfg.phrase_boundary_boost
 
         return min(1.0, max(0.0, prob))
+
+    @staticmethod
+    def _smooth(previous: float, target: float, alpha: float) -> float:
+        return previous + alpha * (target - previous)
+
+    @staticmethod
+    def _clamp(value: float, bounds: tuple[float, float]) -> float:
+        return max(bounds[0], min(bounds[1], value))
