@@ -39,6 +39,57 @@ class EyeMotionSynthTests(unittest.TestCase):
         boundary_blink_energy = sum(f["blink_l"] for f in boundary_out)
         self.assertGreater(boundary_blink_energy, speech_blink_energy)
 
+    def test_expression_payload_fields_are_present_and_clamped(self):
+        frames = [
+            {
+                "frame_index": i,
+                "articulation": 0.4,
+                "energy": 1.3,
+                "pitch_slope": 1.5,
+                "phrase_boundary": 1.2,
+                "smile": 0.8,
+            }
+            for i in range(30)
+        ]
+        output = EyeMotionSynth(seed=3).synthesize(frames)
+        keys = {
+            "brow_inner_up",
+            "brow_outer_up_l",
+            "brow_outer_up_r",
+            "eyelid_open_l",
+            "eyelid_open_r",
+            "cheek_raise_l",
+            "cheek_raise_r",
+            "nasolabial_tension",
+            "expr_confidence",
+        }
+        self.assertTrue(all(keys.issubset(set(frame.keys())) for frame in output))
+        for frame in output:
+            for key in keys:
+                self.assertGreaterEqual(frame[key], 0.0)
+                self.assertLessEqual(frame[key], 1.0)
+
+    def test_smile_increases_cheek_raise_and_reduces_eyelid_open(self):
+        neutral = [
+            {"frame_index": i, "energy": 0.4, "pitch_slope": 0.0, "phrase_boundary": 0.0, "smile": 0.0}
+            for i in range(120)
+        ]
+        smiling = [
+            {"frame_index": i, "energy": 0.4, "pitch_slope": 0.0, "phrase_boundary": 0.0, "smile": 1.0}
+            for i in range(120)
+        ]
+
+        neutral_out = EyeMotionSynth(seed=5).synthesize(neutral)
+        smiling_out = EyeMotionSynth(seed=5).synthesize(smiling)
+
+        neutral_cheek = sum(f["cheek_raise_l"] + f["cheek_raise_r"] for f in neutral_out)
+        smiling_cheek = sum(f["cheek_raise_l"] + f["cheek_raise_r"] for f in smiling_out)
+        neutral_eyelid = sum(f["eyelid_open_l"] + f["eyelid_open_r"] for f in neutral_out)
+        smiling_eyelid = sum(f["eyelid_open_l"] + f["eyelid_open_r"] for f in smiling_out)
+
+        self.assertGreater(smiling_cheek, neutral_cheek)
+        self.assertLess(smiling_eyelid, neutral_eyelid)
+
 
 if __name__ == "__main__":
     unittest.main()
